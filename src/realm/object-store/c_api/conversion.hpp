@@ -7,6 +7,7 @@
 #include <realm/object-store/schema.hpp>
 #include <realm/object-store/object_schema.hpp>
 #include <realm/object-store/shared_realm.hpp>
+#include <realm/object-store/collection.hpp>
 
 #include <realm/string_data.hpp>
 #include <realm/binary_data.hpp>
@@ -441,6 +442,151 @@ static inline realm_class_info_t to_capi(const ObjectSchema& o)
         info.flags = RLM_CLASS_NORMAL;
     }
     return info;
+}
+
+/// Convert a Mixed that potentially contains an untyped ObjKey to a Mixed
+/// containing an ObjLink.
+static inline Mixed resolve_untyped_link(Mixed value, const Table& source_table, ColKey source_column)
+{
+    if (!value.is_null() && value.get_type() == type_Link) {
+        REALM_ASSERT(source_column.get_type() == col_type_LinkList || source_column.get_type() == col_type_Link);
+
+        auto target_table = source_table.get_link_target(source_column);
+        value = ObjLink{target_table->get_key(), value.get<ObjKey>()};
+    }
+    return value;
+}
+
+/// Convert a Mixed that potentially contains an untyped ObjKey to a Mixed
+/// containing an ObjLink.
+static inline Mixed resolve_untyped_link(Mixed value, const object_store::Collection& coll)
+{
+    auto& realm = *coll.get_realm();
+    auto source_table = realm.read_group().get_table(coll.get_parent_table_key());
+    auto source_column = coll.get_parent_column_key();
+    return resolve_untyped_link(value, *source_table, source_column);
+}
+
+/// Convert a Mixed that potentially contains an ObjLink to a Mixed containing
+/// an untyped ObjKey.
+static inline Mixed typed_link_to_link(Mixed value)
+{
+    if (!value.is_null() && value.get_type() == type_TypedLink) {
+        auto link = value.get<ObjLink>();
+        value = link.get_obj_key();
+    }
+    return value;
+}
+
+/// For a Mixed value and a property, check that the type matches, and call `f`
+/// with the value of the Mixed if it does.
+///
+/// For links, this also converts ObjKey/ObjLink to Obj.
+///
+/// FIXME: This should move into Object Store as it gains better support for
+/// Mixed (similar to Core's `insert_any()` etc.).
+template <class F>
+static auto switch_on_mixed_checked(const std::shared_ptr<Realm>& realm, PropertyType val_type, Mixed val, F&& f)
+{
+    // FIXME: Object Store has poor support for heterogeneous lists, and in
+    // particular it relies on Core to check that the input types to
+    // `List::insert()` etc. match the list property type. Once that is fixed /
+    // made safer, this logic should move into Object Store.
+
+    if (val.is_null()) {
+        if (!is_nullable(val_type)) {
+            // FIXME: Defer this exception to Object Store, which can produce
+            // nicer message.
+            throw std::invalid_argument("NULL in non-nullable field/list.");
+        }
+
+        // Produce a util::none matching the property type.
+        return switch_on_type(val_type, [&](auto ptr) {
+            using T = std::remove_cv_t<std::remove_pointer_t<decltype(ptr)>>;
+            T nothing{};
+            return f(nothing);
+        });
+    }
+
+    PropertyType base_type = (val_type & ~PropertyType::Flags);
+
+    // Note: The following checks PropertyType::Mixed on the assumption that it
+    // will become un-deprecated when Mixed is exposed in Object Store.
+
+    switch (val.get_type()) {
+        case type_Int: {
+            if (base_type != PropertyType::Int && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<int64_t>());
+        }
+        case type_Bool: {
+            if (base_type != PropertyType::Bool && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<bool>());
+        }
+        case type_String: {
+            if (base_type != PropertyType::String && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<StringData>());
+        }
+        case type_Binary: {
+            if (base_type != PropertyType::Data && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<BinaryData>());
+        }
+        case type_Timestamp: {
+            if (base_type != PropertyType::Date && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<Timestamp>());
+        }
+        case type_Float: {
+            if (base_type != PropertyType::Float && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<float>());
+        }
+        case type_Double: {
+            if (base_type != PropertyType::Double && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<double>());
+        }
+        case type_Decimal: {
+            if (base_type != PropertyType::Decimal && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<Decimal128>());
+        }
+        case type_ObjectId: {
+            if (base_type != PropertyType::ObjectId && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<ObjectId>());
+        }
+        case type_TypedLink: {
+            if (base_type != PropertyType::Object && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            // Object Store performs link validation already. Just create an Obj
+            // for the link, and pass it on.
+            auto link = val.get<ObjLink>();
+            auto target_table = realm->read_group().get_table(link.get_table_key());
+            auto obj = target_table->get_object(link.get_obj_key());
+            return f(std::move(obj));
+        }
+        case type_UUID: {
+            if (base_type != PropertyType::UUID && base_type != PropertyType::Mixed)
+                throw std::invalid_argument{"Type mismatch"};
+            return f(val.get<UUID>());
+        }
+
+        case type_Link:
+            // Note: from_capi(realm_value_t) never produces an untyped link.
+            [[fallthrough]];
+        case type_OldTable:
+            [[fallthrough]];
+        case type_Mixed:
+            [[fallthrough]];
+        case type_OldDateTime:
+            [[fallthrough]];
+        case type_LinkList:
+            REALM_TERMINATE("Invalid value type.");
+    }
 }
 
 } // namespace realm
