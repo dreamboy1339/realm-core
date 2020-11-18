@@ -306,3 +306,29 @@ RLM_API realm_list_t* realm_get_list(realm_object_t* object, realm_col_key_t key
         return new realm_list_t{List{object->get_realm(), std::move(obj), col_key}};
     });
 }
+
+RLM_API realm_dictionary_t* realm_get_dictionary(const realm_object_t* object, realm_col_key_t key)
+{
+    return wrap_err([&]() {
+        auto obj = object->obj();
+        auto table = obj.get_table();
+
+        // FIXME: For a recently deleted object, this check can be expensive. It
+        // would make sense if `Obj::remove()` immediately set `m_valid = false`.
+        if (!object->is_valid()) {
+            auto table_key = table->get_key();
+            auto& schema = schema_for_table(object->get_realm(), to_capi(table_key));
+            throw InvalidatedObjectException{schema.name};
+        }
+
+        auto col_key = from_capi(key);
+        table->report_invalid_key(col_key);
+
+        if (!col_key.is_dictionary()) {
+            // FIXME: Proper exception type.
+            throw std::logic_error{"Not a dictionary property"};
+        }
+
+        return new realm_dictionary_t{object_store::Dictionary{object->get_realm(), std::move(obj), col_key}};
+    });
+}

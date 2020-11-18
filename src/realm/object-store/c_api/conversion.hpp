@@ -478,6 +478,32 @@ static inline Mixed typed_link_to_link(Mixed value)
     return value;
 }
 
+static inline Mixed typed_link_to_link_checked(Mixed value, const Table& source_table, ColKey source_column)
+{
+    if (!value.is_null() && value.get_type() == type_TypedLink) {
+        if (source_column.get_type() == col_type_Link || source_column.get_type() == col_type_LinkList) {
+            auto link = value.get<ObjLink>();
+
+            if (link.get_table_key() != source_table.get_link_target(source_column)->get_key()) {
+                // FIXME: Better exception
+                throw std::invalid_argument{"Type mismatch in target table"};
+            }
+
+            return link.get_obj_key();
+        }
+    }
+
+    return value;
+}
+
+static inline Mixed typed_link_to_link_checked(Mixed value, const object_store::Collection& coll)
+{
+    auto& realm = *coll.get_realm();
+    auto source_table = realm.read_group().get_table(coll.get_parent_table_key());
+    auto source_column = coll.get_parent_column_key();
+    return typed_link_to_link_checked(value, *source_table, source_column);
+}
+
 /// For a Mixed value and a property, check that the type matches, and call `f`
 /// with the value of the Mixed if it does.
 ///

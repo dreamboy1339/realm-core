@@ -44,6 +44,9 @@ public:
     template <typename T>
     T get(StringData key) const;
 
+    Mixed get_any(StringData key) const;
+    bool insert_any(StringData key, Mixed value);
+
     void erase(StringData key)
     {
         verify_in_transaction();
@@ -132,6 +135,11 @@ template <typename T>
 T Dictionary::get(StringData key) const
 {
     return m_dict->get(key).get<T>();
+}
+
+inline Mixed Dictionary::get_any(StringData key) const
+{
+    return m_dict->get(key);
 }
 
 template <>

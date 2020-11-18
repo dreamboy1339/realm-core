@@ -126,6 +126,28 @@ RLM_API realm_notification_token_t* realm_list_add_notification_callback(realm_l
 }
 
 RLM_API realm_notification_token_t*
+realm_dictionary_add_notification_callback(realm_dictionary_t* dict, void* userdata, realm_free_userdata_func_t free,
+                                           realm_on_collection_change_func_t on_change,
+                                           realm_callback_error_func_t on_error, realm_scheduler_t*)
+{
+    static_cast<void>(dict);
+    static_cast<void>(userdata);
+    static_cast<void>(free);
+    static_cast<void>(on_change);
+    static_cast<void>(on_error);
+    return wrap_err([&]() -> realm_notification_token_t* {
+        throw std::logic_error{"Not implemented yet"};
+        // CollectionNotificationsCallback cb;
+        // cb.m_userdata = userdata;
+        // cb.m_free = free;
+        // cb.m_on_change = on_change;
+        // cb.m_on_error = on_error;
+        // auto token = dict->add_notification_callback(std::move(cb));
+        // return new realm_notification_token_t{std::move(token)};
+    });
+}
+
+RLM_API realm_notification_token_t*
 realm_results_add_notification_callback(realm_results_t* results, void* userdata, realm_free_userdata_func_t free,
                                         realm_on_collection_change_func_t on_change,
                                         realm_callback_error_func_t on_error, realm_scheduler_t*)
