@@ -336,6 +336,45 @@ struct realm_dictionary : WrapC, object_store::Dictionary {
     // }
 };
 
+struct realm_set : WrapC, object_store::Set {
+    explicit realm_set(object_store::Set dict)
+        : object_store::Set(std::move(dict))
+    {
+    }
+
+    realm_set* clone() const override
+    {
+        return new realm_set{*this};
+    }
+
+    bool is_frozen() const override
+    {
+        return object_store::Set::is_frozen();
+    }
+
+    bool equals(const WrapC& other) const noexcept final
+    {
+        if (auto ptr = dynamic_cast<const realm_set_t*>(&other)) {
+            return get_realm() == ptr->get_realm() && get_parent_table_key() == ptr->get_parent_table_key() &&
+                   get_parent_column_key() == ptr->get_parent_column_key() &&
+                   get_parent_object_key() == ptr->get_parent_object_key();
+        }
+        return false;
+    }
+
+    struct thread_safe_reference : realm_thread_safe_reference, ThreadSafeReference {
+        thread_safe_reference(const object_store::Set& dict)
+            : ThreadSafeReference(dict)
+        {
+        }
+    };
+
+    realm_thread_safe_reference_t* get_thread_safe_reference() const final
+    {
+        return new thread_safe_reference{*this};
+    }
+};
+
 struct realm_object_changes : WrapC, CollectionChangeSet {
     explicit realm_object_changes(CollectionChangeSet changes)
         : CollectionChangeSet(std::move(changes))

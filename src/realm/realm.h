@@ -1392,7 +1392,7 @@ RLM_API void realm_collection_changes_get_ranges(
 RLM_API realm_set_t* _realm_set_from_native_copy(const void* pset, size_t n);
 RLM_API realm_set_t* _realm_set_from_native_move(void* pset, size_t n);
 RLM_API realm_set_t* realm_get_set(const realm_object_t*, realm_col_key_t);
-RLM_API size_t realm_set_size(const realm_set_t*);
+RLM_API bool realm_set_size(const realm_set_t*, size_t* out_size);
 RLM_API bool realm_set_get(const realm_set_t*, size_t index, realm_value_t* out_value);
 RLM_API bool realm_set_find(const realm_set_t*, realm_value_t value, size_t* out_index);
 RLM_API bool realm_set_insert(realm_set_t*, realm_value_t value, size_t out_index);

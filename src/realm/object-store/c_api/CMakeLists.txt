@@ -11,6 +11,7 @@ set(REALM_FFI_SOURCES
     realm.cpp
     scheduler.cpp
     schema.cpp
+    set.cpp
     util.cpp
 
     conversion.hpp
