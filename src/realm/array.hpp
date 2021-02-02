@@ -744,6 +744,10 @@ private:
     friend class Allocator;
     friend class SlabAlloc;
     friend class GroupWriter;
+
+    template <Action action, size_t bitwidth, class Callback>
+    bool find_all_will_match(size_t start, size_t end, size_t baseindex, QueryState<int64_t>* state,
+                             Callback callback) const;
 };
 
 class ClusterKeyArray : public ArrayUnsigned {
@@ -1500,6 +1504,45 @@ uint64_t Array::cascade(uint64_t a) const
     }
 }
 
+template <Action action, size_t bitwidth, class Callback>
+REALM_NOINLINE bool Array::find_all_will_match(size_t start2, size_t end, size_t baseindex,
+                                               QueryState<int64_t>* state, Callback callback) const
+{
+    size_t end2;
+
+    if (action == act_CallbackIdx)
+        end2 = end;
+    else {
+        REALM_ASSERT_DEBUG(state->m_match_count < state->m_limit);
+        size_t process = state->m_limit - state->m_match_count;
+        end2 = end - start2 > process ? start2 + process : end;
+    }
+    if (action == act_Sum || action == act_Max || action == act_Min) {
+        int64_t res;
+        size_t res_ndx = 0;
+        if (action == act_Sum)
+            res = Array::sum(start2, end2);
+        if (action == act_Max)
+            Array::maximum(res, start2, end2, &res_ndx);
+        if (action == act_Min)
+            Array::minimum(res, start2, end2, &res_ndx);
+
+        find_action<action, Callback>(res_ndx + baseindex, res, state, callback);
+        // find_action will increment match count by 1, so we need to `-1` from the number of elements that
+        // we performed the fast Array methods on.
+        state->m_match_count += end2 - start2 - 1;
+    }
+    else if (action == act_Count) {
+        state->m_state += end2 - start2;
+    }
+    else {
+        for (; start2 < end2; start2++)
+            if (!find_action<action, Callback>(start2 + baseindex, get<bitwidth>(start2), state, callback))
+                return false;
+    }
+    return true;
+}
+
 // This is the main finding function for Array. Other finding functions are just wrappers around this one.
 // Search for 'value' using condition cond (Equal, NotEqual, Less, etc) and call find_action() or
 // find_action_pattern() for each match. Break and return if find_action() returns false or 'end' is reached.
@@ -1534,39 +1577,7 @@ bool Array::find_optimized(int64_t value, size_t start, size_t end, size_t basei
 
     // optimization if all items are guaranteed to match (such as cond == NotEqual && value == 100 && m_ubound == 15)
     if (c.will_match(value, lbound, ubound)) {
-        size_t end2;
-
-        if (action == act_CallbackIdx)
-            end2 = end;
-        else {
-            REALM_ASSERT_DEBUG(state->m_match_count < state->m_limit);
-            size_t process = state->m_limit - state->m_match_count;
-            end2 = end - start2 > process ? start2 + process : end;
-        }
-        if (action == act_Sum || action == act_Max || action == act_Min) {
-            int64_t res;
-            size_t res_ndx = 0;
-            if (action == act_Sum)
-                res = Array::sum(start2, end2);
-            if (action == act_Max)
-                Array::maximum(res, start2, end2, &res_ndx);
-            if (action == act_Min)
-                Array::minimum(res, start2, end2, &res_ndx);
-
-            find_action<action, Callback>(res_ndx + baseindex, res, state, callback);
-            // find_action will increment match count by 1, so we need to `-1` from the number of elements that
-            // we performed the fast Array methods on.
-            state->m_match_count += end2 - start2 - 1;
-        }
-        else if (action == act_Count) {
-            state->m_state += end2 - start2;
-        }
-        else {
-            for (; start2 < end2; start2++)
-                if (!find_action<action, Callback>(start2 + baseindex, get<bitwidth>(start2), state, callback))
-                    return false;
-        }
-        return true;
+        return find_all_will_match<action, bitwidth, Callback>(start2, end, baseindex, state, callback);
     }
 
     // finder cannot handle this bitwidth
