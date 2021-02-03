@@ -1839,6 +1839,8 @@ bool Array::find_gtlt(int64_t v, uint64_t chunk, QueryState<int64_t>* state, siz
         }
     }
 
+    static_cast<void>(state);
+    static_cast<void>(callback);
     return true;
 }
 // clang-format on
